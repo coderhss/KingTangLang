@@ -1,13 +1,14 @@
 import pandas as pd
 import numpy as np
 import math
-import logging
+from Loger import get_logger
 import ProductAttribute
 import SoldProductItem
 import os
 
 productAttrMap = {}
 outData = []
+global logger
 
 
 def read_excel(path):
@@ -31,8 +32,8 @@ def getCodeAndSize(raw_data):
         if content.startswith("规格"):
             productSizeStrCol = j
             break
-    if productTypeCodeCol == -1 or productSizeStrCol == -1:
-        print("找不到产品型号或者规格所在列!")
+    # if productTypeCodeCol == -1 or productSizeStrCol == -1:
+    #     logger.warning("找不到产品型号或者规格所在列!")
 
     return raw_data[1:, productTypeCodeCol], raw_data[1:, productSizeStrCol]
 
@@ -43,7 +44,8 @@ def Data2Object(raw_data):
     codeShape = np.shape(productCode)
     sizeShape = np.shape(productSize)
     if codeShape != sizeShape:
-        print("产品型号和规格行数不一致！")
+        logger.error("产品型号和规格行数不一致！")
+        return
     for i in range(codeShape[0]):
         item = ProductAttribute.ProductAttr()
         item.productCode = str(productCode[i])
@@ -59,9 +61,9 @@ def Data2Object(raw_data):
         if productAttrMap.get(item.productCode) is not None:
             it = productAttrMap.get(item.productCode)
             if it.ProductAttr.productSizeStr is not item.productSizeStr:
-                print("请注意这个产品代码有重复，并且规格不一致，请扔工检查！")
-                print("产品型号: ", item.productCode)
-                print("产品规格： ", item.productSizeStr)
+                logger.error("请注意这个产品代码有重复，并且规格不一致，请人工检查！")
+                logger.error("产品型号: %s", item.productCode)
+                logger.error("产品规格： %s", item.productSizeStr)
         productAttrMap[item.productCode] = item
 
 
@@ -82,7 +84,7 @@ def getSoldCodeAndSoldNum(raw_data):
             SoldNumCol = j
             break
     if productTypeCol == -1 or SoldNumCol == -1:
-        print("找不到型号或者入库数量所在列!")
+        logger.warning("找不到型号或者入库数量所在列!")
     return raw_data[1:, productTypeCol], raw_data[1:, SoldNumCol]
 
 
@@ -111,13 +113,16 @@ def generateSoldInfo(raw_data):
     typeShape = np.shape(product_type)
     soldShape = np.shape(sold_num)
     if typeShape != soldShape:
-        print("型号和入库数量行数不一致！")
+        logger.error("型号和入库数量行数不一致！")
+        return
     for i in range(typeShape[0]):
         item = SoldProductItem.SoldProductItem()
         item.productType = str(product_type[i])
+        if not math.isnan(sold_num[i]):
+            item.sold_num = int(sold_num[i])
         code = decodeType(item.productType)
         if code == "":
-            print("无法解析出产品代码！ 产品类型：", item.productType)
+            logger.warning("无法解析出产品代码！ 产品类型： %s", item.productType)
         else:
             item.productCode = code
             if productAttrMap.get(code) is None:
@@ -130,10 +135,10 @@ def generateSoldInfo(raw_data):
                         isFound = True
                         break
                 if not isFound:
-                    print("没有对应的产品数据，请手动处理！产品类型：", item.productType, "产品代码：", code)
+                    logger.error("没有对应的产品数据，请手动处理！产品类型: %s, 产品代码：%s", item.productType, code)
             else:
                 item.scale = productAttrMap.get(code).scale
-
+        item.sold_scale_total = item.scale * item.sold_num
         outData.append(item)
         # print(round(item.scale, 8))
 
@@ -161,9 +166,10 @@ def getAllExcels():
 
 
 if __name__ == '__main__':
+    logger = get_logger()
     map_files, data_files = getAllExcels()
     if len(map_files) < 1 or len(data_files) < 1:
-        print("文件缺失，产品清单和暂估单都要大于1个！")
+        logger.error("文件缺失，产品清单和暂估单都要大于1个！")
 
     for map_file in map_files:
         generateProductMap(map_file)
@@ -179,9 +185,12 @@ if __name__ == '__main__':
     # Data2Object(product_size_raw)
     generateSoldInfo(predict_price_raw)
     scale_list = ["单片面积"]
+    sold_scale_list = ["售出总面积"]
 
     for item in outData:
         scale_list.append(round(item.scale, 9))
+        sold_scale_list.append(round(item.sold_scale_total, 9))
     predict_price_excel["面积统计"] = scale_list
+    predict_price_excel["总面积统计"] = sold_scale_list
     predict_price_excel.to_excel("out.xlsx", index=False)
 
