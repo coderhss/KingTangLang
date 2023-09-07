@@ -122,7 +122,7 @@ def generateSoldInfo(raw_data):
             item.sold_num = int(sold_num[i])
         code = decodeType(item.productType)
         if code == "":
-            logger.warning("无法解析出产品代码！ 产品类型： %s", item.productType)
+            logger.error("无法解析出产品代码！请手动处理！产品类型： %s", item.productType)
         else:
             item.productCode = code
             if productAttrMap.get(code) is None:
@@ -193,4 +193,5 @@ if __name__ == '__main__':
     predict_price_excel["面积统计"] = scale_list
     predict_price_excel["总面积统计"] = sold_scale_list
     predict_price_excel.to_excel("out.xlsx", index=False)
-
+    print("程序运行结束！请按回车键退出.")
+    input()
